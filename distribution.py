@@ -80,6 +80,11 @@ class EvolvingProbabilityDistribution:
             {
                 'type': 'eq',
                 'fun': lambda pars: self.cdf(np.array([b]), pars, left_bound=a) - 1
+            },
+            {
+                # прижимаем концы стационарного распределения
+                'type': 'ineq',
+                'fun': lambda pars: 0.01 - self.pdf(np.array([a, b]), pars)
             }
         ]
         return constraints
@@ -172,16 +177,6 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
 
     def integration_interval(self, X):
         return 0, np.exp(np.max(np.log(X)) + 0.5 * np.std(np.log(X)))
-
-    def create_constraints(self, X):
-        a, b = self.integration_interval(X)
-        return [
-            {
-                # прижимаем концы стационарного распределения
-                'type': 'ineq',
-                'fun': lambda pars: 0.01 - self.pdf(np.array([a, b]), pars)
-            },
-        ]
 
     def create_bounds(self, pars):
         bounds = super().create_bounds(pars)
