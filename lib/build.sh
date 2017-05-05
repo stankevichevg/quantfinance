@@ -1,0 +1,1 @@
+gcc -shared -fPIC -o stdisplib.so stdisplib.c
