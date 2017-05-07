@@ -1,4 +1,6 @@
 # coding=utf-8
+import multiprocessing
+from multiprocessing import Pool
 
 import numpy as np
 
@@ -12,6 +14,11 @@ from scipy import integrate, LowLevelCallable
 stdisplib = ctypes.CDLL(os.path.abspath('lib/stdisplib.so'))
 stdisplib.f.restype = ctypes.c_double
 stdisplib.f.argtypes = (ctypes.c_int, ctypes.POINTER(ctypes.c_double), ctypes.c_void_p)
+
+try:
+    cpus = multiprocessing.cpu_count()
+except NotImplementedError:
+    cpus = 2   # где не смогли определеить, выставляем по умолчанию
 
 
 class DistributionParams(ctypes.Structure):
@@ -27,10 +34,10 @@ class EvolvingProbabilityDistribution:
     Базовый класс для модели нестационарной плотности вероятности.
     """
 
-    def __init__(self, params, bounds):
+    def __init__(self, params, interval, status):
         self.params = params
-        self.interval = bounds
-        self.status = -1
+        self.interval = interval
+        self.status = status
 
     def pdf(self, xs, params=None, t=np.inf):
         """
@@ -38,13 +45,32 @@ class EvolvingProbabilityDistribution:
         
         :param xs: точки, в которых необходимо посчитать значения
         :param params: параметры распределения
-        :param t: 
-        :return: 
+        :param t: момент времени
+        :return: массив значений PDF в заданных точках в заданный момент времени
         """
         raise NotImplementedError
 
     def cdf(self, xs, params=None, t=np.inf, left_bound=None):
+        """
+        Для заданных точек производит рассчет значений CDF.
+        
+        :param xs: точки, в которых необходимо посчитать значения
+        :param params: параметры распределения
+        :param t: момент времени
+        :param left_bound: левая граница интегрирования для нахождения CDF в каждой точке
+        :return: массив значений CDF в заданных точках в заданный момент времени
+        """
         raise NotImplementedError
+
+    def moment(self, k, t=np.inf):
+        """
+        Производит рассчет k-ого момента данного распределения
+        
+        :param k: порядок момента
+        :param t: момент времени
+        :return: значение момента данного распределения в заданное время
+        """
+        return integrate.quad(lambda x: np.power(x, k) * self.pdf(np.array([x]), t=t), self.interval[0], self.interval[1])[0]
 
     @timeit
     def fit(self, X):
@@ -62,7 +88,7 @@ class EvolvingProbabilityDistribution:
         )
 
         self.params = result.x
-        self.status = result.status
+        self.status = (result.status, result.fun)
         a, b = self.integration_interval(X)
         self.interval = (a, b)
         return self
@@ -96,7 +122,7 @@ class EvolvingProbabilityDistribution:
         :param pars: параметры распределения
         :return: список ограничений
         """
-        return [(None, None) for i in range(0, params.shape[0])]
+        return [(None, None) for i in range(0, pars.shape[0])]
 
     def integration_interval(self, X):
         """
@@ -109,7 +135,25 @@ class EvolvingProbabilityDistribution:
     def plot(self):
         raise NotImplementedError
 
-    def __inv_log_likelihood(self, params, xs):
+    def to_df(self):
+        """
+        Сохраняет данную модель распределения в DataFrame.
+        
+        :return: представление модели распределения в виде DataFrame
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def from_df(df):
+        """
+        Восстанавливает модель из представления в виде DataFrame.
+        
+        :param df: представление модели распределения в виде DataFrame
+        :return: модель распределения или список моделей, если фрэйм содержит больше чем одну модель
+        """
+        raise NotImplementedError
+
+    def __inv_log_likelihood(self, pars, xs):
         """
         Производит рассчет значения функции правдоподобия (логарифм совместной вероятности) заданных 
         наблюдаемых значений при условии заданных параметров.
@@ -118,7 +162,7 @@ class EvolvingProbabilityDistribution:
         :param xs: наблюдаемые значения
         :return: значение функции правдоподобия с обратным знаком (удобно для нужд оптимизации)
         """
-        return -np.sum(np.log(self.pdf(xs, params, 0)))
+        return -np.sum(np.log(self.pdf(xs, pars, 0)))
 
 
 class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
@@ -127,8 +171,8 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
     замены переменной через решение уравнения тепловой диффузии.
     """
 
-    def __init__(self, params, bounds=(None, None)):
-        EvolvingProbabilityDistribution.__init__(self, params, bounds)
+    def __init__(self, pars, interval=(None, None), status=(-1, None)):
+        EvolvingProbabilityDistribution.__init__(self, pars, interval, status)
 
     def pdf(self, xs, pars=None, t=np.inf):
         d_params = pars if pars is not None else self.params
@@ -144,6 +188,38 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
         else:
             # TODO реализовать CDF для общего случая (можно без оптимизаций)
             raise NotImplementedError
+
+    def to_df(self):
+        values, names = [], []
+        names.append('status')
+        values.append(self.status[0])
+        names.append('logl')
+        values.append(self.status[1])
+        names.append('left_bound')
+        values.append(self.interval[0])
+        names.append('right_bound')
+        values.append(self.interval[1])
+        names.append('A')
+        values.append(self.params[0])
+        names.append('k')
+        values.append(self.params[1])
+        names.append('K')
+        values.append(self.params[2])
+        for i, par in enumerate(self.params[3:].tolist()):
+            names.append('lambda' + repr(i))
+            values.append(par)
+        return pd.DataFrame([values], columns=names)
+
+    @staticmethod
+    def from_df(df):
+        models = []
+        for _, row in df.iterrows():
+            all_params = row.values
+            model_params = all_params[4:]
+            interval = (all_params[2], all_params[3])
+            status = (all_params[0], all_params[1])
+            models.append(FpdFromHeatDiffusion(model_params, interval, status))
+        return models[0] if len(models) == 1 else models
 
     def __optimized_stationary_cdf(self, xs, pars, leftmost=None):
         """
@@ -173,6 +249,7 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
             prev_cdf += integrate.quad(pdf_f, left_bound, xs[indexes[i]])[0]
             result[indexes[i]] = prev_cdf
             left_bound = xs[indexes[i]]
+
         return result
 
     def integration_interval(self, X):
@@ -185,53 +262,92 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
         bounds[2] = (0.0, None)
         return bounds
 
-    def __stationary_pdf(self, points, params):
-        K = params[2]
-        st_params = params[3:]
+    def __stationary_pdf(self, points, pars):
+        K = pars[2]
+        st_params = pars[3:]
         powers = np.arange(st_params.shape[0]) + 1
         return K * np.exp(
             np.power(np.tile(points, (powers.shape[0], 1)), np.tile(powers, (points.shape[0], 1)).transpose())
                 .transpose().dot(st_params)
         )
 
-    def __pdf_perturbation(self, points, params, t):
-        A = params[0]
-        k = params[1]
-        return 1 + A * np.exp(-np.power(k, 2) * t) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, params, leftmost=0)))
+    def __pdf_perturbation(self, points, pars, t):
+        A = pars[0]
+        k = pars[1]
+        return 1 + A * np.exp(-np.power(k, 2) * t) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
 
 
 import pandas as pd
-from data_utils import slice_array
+from data_utils import load_window_returns, load_returns, load_prices
 
-# читаем данные из файла
-data = pd.read_csv("data/IB-EURUSD-8-XI-2016-2.csv")
-prices = np.array(data["ask_close"])
 
-k = 12
-start = 42000
-end = 42543
+def fit_hd_model(observations, complexity=8):
+    mparams = np.zeros(complexity)
+    mparams[0] = 1.0 / 3
+    mparams[1] = 3 * np.pi
+    mparams[2] = 1
+    fpd = FpdFromHeatDiffusion(mparams)
+    fpd_model = fpd.fit(observations)
+    return fpd_model
 
-log_prices_shifted = np.log(prices[start:end - k - 2])
-log_prices = np.log(prices[start + 1:end])
 
-sliced_prices = slice_array(log_prices, k)
+def create_models(train, complexity, n_threads=1):
+    ms = []
+    with Pool(processes=n_threads) as pool:
+        results = [pool.apply_async(fit_hd_model, (np.exp(train[i, :]), complexity)) for i in range(train.shape[0])]
+        for i, res in enumerate(results):
+            ms.append(res.get())
+            print("Model %d is ready" % i)
+    return ms
 
-returns = 100 * (sliced_prices - np.tile(log_prices_shifted, (k, 1)).transpose())
 
-params = np.zeros(7)
-params[0] = 1.0 / 3
-params[1] = 3 * np.pi
-params[2] = 1
+def save_models(ms, file=None):
+    df = None
+    for m in ms:
+        if df is None:
+            df = m.to_df()
+        else:
+            df = df.append(m.to_df(), ignore_index=True)
+    if file is not None:
+        df.to_csv(file, sep=';')
+    return df
 
-for i in range(0, returns.shape[0]):
-    print("Iteration %d" % i)
-    params = np.zeros(8)
-    params[0] = 1.0 / 3
-    params[1] = 3 * np.pi
-    params[2] = 1
-    returns_window = np.exp(returns[i, :])
-    print(returns_window)
-    fpd = FpdFromHeatDiffusion(params)
-    fpd.fit(returns_window)
-    params = fpd.params
-    print(fpd.params, fpd.interval)
+
+if __name__ == '__main__':
+    # читаем данные из файла
+    data = pd.read_csv("data/IB-EURUSD-8-XI-2016-2.csv")
+    prices = np.array(data["ask_close"])
+
+    complexity = 8
+    window = 12
+    start = 41043
+    N = 1000
+
+    points = load_returns("data/IB-EURUSD-8-XI-2016-2.csv", "ask_close", start + 1, N, rtype="points")
+
+    # w_returns = load_window_returns("data/IB-EURUSD-8-XI-2016-2.csv", "ask_close", start, N, window)
+    # models = create_models(w_returns, complexity, 3)
+    # df = save_models(models, "data/.temp/models2.csv")
+
+    df = pd.DataFrame.from_csv("data/.temp/models2.csv", sep=";")
+    models = FpdFromHeatDiffusion.from_df(df)[:N]
+
+    prev_mean = models[0].moment(1, 0)
+    pnl = np.zeros(N - 1)
+    pnl[0] = points[0]
+    for i, m in enumerate(models[1:]):
+        mean = m.moment(1, 0)
+        if prev_mean is not None:
+            if m.status[0] == 0:
+                pnl[i] = pnl[i - 1] + np.sign(mean - prev_mean) * points[i]
+                prev_mean = mean
+            else:
+                pnl[i] = pnl[i - 1]
+
+    import matplotlib.pyplot as plt
+
+    plt.plot(pnl)
+
+
+
+    FpdFromHeatDiffusion.from_df(df)

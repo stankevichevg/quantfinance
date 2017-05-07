@@ -5,6 +5,8 @@ import numpy as np
 
 import scipy.integrate as integrate
 from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
+
 
 def create_distribution_w(params):
     def st_distr_pdf(x):
@@ -60,8 +62,17 @@ params = [  8.00000000e-01,   6.05674767e+00,   1.03814102e-06,  -1.10247410e+02
    3.96117928e+02,  -4.48043419e+02,   2.12209082e+02,  -3.62852998e+01]
 params = [  8.00000000e-01,   1.11555783e+01,   3.01876071e-03,   2.09413377e+01,
   -1.11540221e+01,  -3.41219536e+01,   5.76438807e+01,  -2.85155923e+01]
-params = [  7.91171990e-01,   7.61544091e+00,   1.39106937e-03,   1.54006369e+01,
-  -1.15453382e+01,  -4.60845846e+01,   9.14219549e+01,  -4.19077571e+01]
+params = [
+    0.7998222128275532,
+    11.92359484874441,
+    4.691433880061801e-06,
+    - 135.8156777229763,
+    94.39390696251704,
+
+    157.17831297088108,
+    67.01585706961868,
+    - 168.90495922825784
+]
 
 def st_distr_pdf(x):
     f = 0
@@ -72,7 +83,7 @@ def st_distr_pdf(x):
 pdf = create_distribution_pdf(params)
 pdf_w = create_distribution_w(params)
 
-x = np.linspace(0.3, 2.5, 150)
+x = np.linspace(0.2, 1.4, 50)
 t = np.linspace(0, 0.045, 30)
 
 X, T, W, P, S = [], [], [], [], []
@@ -90,11 +101,11 @@ for j in range(t.shape[0]):
         W.append(pdf_w(x[i], t[j]))
 
 fig = plt.figure()
-ax = fig.gca(projection='3d')
+ax = Axes3D(fig)
 X, Y, Z_W = np.array(X), np.array(T), np.array(W)
 Z_S = np.array(S)
 
-ax.plot_trisurf(X, Y, Z_W, cmap=cm.jet, linewidth=0.2, alpha=0.2)
+ax.plot_trisurf(X, Y, Z_W, cmap=cm.jet, linewidth=0.2, alpha=0.4)
 
 ax.plot(x, ys=np.zeros(x.shape[0]), zs=Z_S, zdir='z', label='t=0', c='r', linewidth=2)
 
