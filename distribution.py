@@ -15,11 +15,6 @@ stdisplib = ctypes.CDLL(os.path.abspath('lib/stdisplib.so'))
 stdisplib.f.restype = ctypes.c_double
 stdisplib.f.argtypes = (ctypes.c_int, ctypes.POINTER(ctypes.c_double), ctypes.c_void_p)
 
-try:
-    cpus = multiprocessing.cpu_count()
-except NotImplementedError:
-    cpus = 2   # где не смогли определеить, выставляем по умолчанию
-
 
 class DistributionParams(ctypes.Structure):
     """
@@ -71,6 +66,17 @@ class EvolvingProbabilityDistribution:
         :return: значение момента данного распределения в заданное время
         """
         return integrate.quad(lambda x: np.power(x, k) * self.pdf(np.array([x]), t=t), self.interval[0], self.interval[1])[0]
+
+    def cme(self, a, b, t=np.inf):
+        """
+        Производит рассчет условного математического ожидания наблюдаемого значения при условии, 
+        что оно лежит в интервале [a, b].
+        
+        :param b: пороговое значение
+        :param t: момент времени
+        :return: значение условного математического ожидания
+        """
+        return integrate.quad(lambda x: x * self.pdf(np.array([x]), t=t), a, b)[0]
 
     @timeit
     def fit(self, X):
@@ -130,7 +136,7 @@ class EvolvingProbabilityDistribution:
 
         :return: границы интегрирования в виде пары значений
         """
-        return np.max(X) - 0.5 * np.std(X), 0.5 * np.max(X) + np.std(X)
+        return np.min(X) - 0.5 * np.std(X), np.max(X) + 0.5 * np.std(X)
 
     def plot(self):
         raise NotImplementedError
@@ -184,10 +190,10 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
     def cdf(self, xs, pars=None, t=np.inf, left_bound=None):
         leftmost = left_bound if left_bound is not None else self.integration_interval(xs)[0]
         if np.isinf(t):
-            return self.__optimized_stationary_cdf(xs, pars, leftmost)
+            return self.__optimized_stationary_cdf(xs, pars if pars is not None else self.params, leftmost)
         else:
             # TODO реализовать CDF для общего случая (можно без оптимизаций)
-            raise NotImplementedError
+            return integrate.quad(lambda x: self.pdf(np.array([x]), t=t), self.interval[0], xs[0])[0]
 
     def to_df(self):
         values, names = [], []
@@ -276,78 +282,3 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
         k = pars[1]
         return 1 + A * np.exp(-np.power(k, 2) * t) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
 
-
-import pandas as pd
-from data_utils import load_window_returns, load_returns, load_prices
-
-
-def fit_hd_model(observations, complexity=8):
-    mparams = np.zeros(complexity)
-    mparams[0] = 1.0 / 3
-    mparams[1] = 3 * np.pi
-    mparams[2] = 1
-    fpd = FpdFromHeatDiffusion(mparams)
-    fpd_model = fpd.fit(observations)
-    return fpd_model
-
-
-def create_models(train, complexity, n_threads=1):
-    ms = []
-    with Pool(processes=n_threads) as pool:
-        results = [pool.apply_async(fit_hd_model, (np.exp(train[i, :]), complexity)) for i in range(train.shape[0])]
-        for i, res in enumerate(results):
-            ms.append(res.get())
-            print("Model %d is ready" % i)
-    return ms
-
-
-def save_models(ms, file=None):
-    df = None
-    for m in ms:
-        if df is None:
-            df = m.to_df()
-        else:
-            df = df.append(m.to_df(), ignore_index=True)
-    if file is not None:
-        df.to_csv(file, sep=';')
-    return df
-
-
-if __name__ == '__main__':
-    # читаем данные из файла
-    data = pd.read_csv("data/IB-EURUSD-8-XI-2016-2.csv")
-    prices = np.array(data["ask_close"])
-
-    complexity = 8
-    window = 12
-    start = 41043
-    N = 1000
-
-    points = load_returns("data/IB-EURUSD-8-XI-2016-2.csv", "ask_close", start + 1, N, rtype="points")
-
-    # w_returns = load_window_returns("data/IB-EURUSD-8-XI-2016-2.csv", "ask_close", start, N, window)
-    # models = create_models(w_returns, complexity, 3)
-    # df = save_models(models, "data/.temp/models2.csv")
-
-    df = pd.DataFrame.from_csv("data/.temp/models2.csv", sep=";")
-    models = FpdFromHeatDiffusion.from_df(df)[:N]
-
-    prev_mean = models[0].moment(1, 0)
-    pnl = np.zeros(N - 1)
-    pnl[0] = points[0]
-    for i, m in enumerate(models[1:]):
-        mean = m.moment(1, 0)
-        if prev_mean is not None:
-            if m.status[0] == 0:
-                pnl[i] = pnl[i - 1] + np.sign(mean - prev_mean) * points[i]
-                prev_mean = mean
-            else:
-                pnl[i] = pnl[i - 1]
-
-    import matplotlib.pyplot as plt
-
-    plt.plot(pnl)
-
-
-
-    FpdFromHeatDiffusion.from_df(df)
