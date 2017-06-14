@@ -91,7 +91,7 @@ class EvolvingProbabilityDistribution:
 
         result = minimize(
             self.__inv_log_likelihood, self.params, args=(X,),
-            constraints=tuple(self.create_constraints(X)), options={'disp': True, 'maxiter': 1000},
+            constraints=tuple(self.create_constraints(X)), options={'disp': False, 'maxiter': 1000},
             bounds=self.create_bounds(self.params), tol=5e-06
         )
 

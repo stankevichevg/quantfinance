@@ -8,7 +8,6 @@ import sklearn.preprocessing
 
 from tradingworld import TradingGameWorld
 
-import logging
 import logging.config
 
 logging.config.fileConfig('logging.conf')

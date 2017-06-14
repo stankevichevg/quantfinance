@@ -9,16 +9,22 @@ from itertools import product
 from datautils import load_returns, load_window_returns
 from distribution import FpdFromHeatDiffusion
 
+import logging.config
+
+logging.config.fileConfig('logging.conf')
+
+logger = logging.getLogger('default')
+
 try:
     cpus = multiprocessing.cpu_count()
 except NotImplementedError:
     cpus = 2   # где не смогли определеить, выставляем по умолчанию
 
 
-def fit_hd_model(observations, complexity=8):
+def fit_hd_model(observations, complexity=8, init_k=1.0 / 3, init_a=1 * np.pi):
     mparams = np.zeros(complexity)
-    mparams[0] = 1.0 / 3
-    mparams[1] = 1 * np.pi
+    mparams[0] = init_k
+    mparams[1] = init_a
     mparams[2] = 1
     fpd = FpdFromHeatDiffusion(mparams)
     fpd_model = fpd.fit(observations)
@@ -28,10 +34,32 @@ def fit_hd_model(observations, complexity=8):
 def create_models(train, complexity, n_threads=1):
     ms = []
     with Pool(processes=n_threads) as pool:
-        results = [pool.apply_async(fit_hd_model, (train[i, :], complexity)) for i in range(train.shape[0])]
-        for i, res in enumerate(results):
-            ms.append(res.get())
-            print("Model %d is ready" % i)
+        # 1. создаем сетку параметров
+        # 0.1 <= k <= 0.95
+        k_values = np.arange(0.1, 0.95, 0.2)
+        # 0.5 * pi <= A <= 5 * pi
+        a_values = np.pi * np.arange(2, 7, 1)
+        # 2. каждую модель оптимизируем в каждом узле сетки
+        pairs = list(product(k_values, a_values))
+        for i in range(train.shape[0]):
+            logger.debug("Fitting model #%d", i)
+            results = [(pair, pool.apply_async(fit_hd_model, (train[i, :], complexity, pair[0], pair[1]))) for pair in pairs]
+            # 3. выбираем лучшее решение из всех (минимальное значение )
+            best_model = None
+            best_pair = None
+            best_score = np.inf
+            for res in results:
+                model = res[1].get()
+                if model.status[1] < best_score:
+                    best_model = model
+                    best_pair = res[0]
+                    best_score = model.status[1]
+
+            logger.debug("The best model have been found for init params: (%f, %f)", best_pair[0], best_pair[1])
+            logger.debug("Model fitting status: %s", best_model.status)
+            logger.debug("Found params: %s", best_model.params)
+            ms.append(best_model)
+            logger.debug("Model %d is ready", i)
     return ms
 
 
