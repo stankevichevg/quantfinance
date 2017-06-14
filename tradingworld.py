@@ -1,23 +1,29 @@
 import numpy as np
 from gym.spaces import Box
 
+import logging.config
+
+logging.config.fileConfig('logging.conf')
+
+logger = logging.getLogger('default')
+
 features = np.array([
     'mean',
     'dispersion',
     # 'dispersion_st',
-    # 'kurtosis',
-    # 'kurtosis_st',
-    # 'mean_st',
-    # 'neg_cme',
+    'kurtosis',
+    'kurtosis_st',
+    'mean_st',
+    'neg_cme',
     'pos_cdf',
-    # 'pos_cdf_st',
+    'pos_cdf_st',
     'pos_cme',
-    # 'skewness',
-    # 'skewness_st'
+    'skewness',
+    'skewness_st'
 ])
 
 class TradingGameWorld:
-    def __init__(self, market_states, spread=5, max_allowed_position=10, game_length=1000):
+    def __init__(self, market_states, spread=5, max_allowed_position=3, game_length=1000):
         self.market_states = market_states
         self.position = 0
         self.cur_index = 0
@@ -36,11 +42,34 @@ class TradingGameWorld:
         ind = index if index is not None else self.cur_index
         pos = position if position is not None else self.position
         market_state = self.market_states.iloc[ind][features].values
-        market_state2 = self.market_states.iloc[ind-1][features].values
+        market_state1 = self.market_states.iloc[ind-1][features].values
+        market_state2 = self.market_states.iloc[ind-2][features].values
+        market_state3 = self.market_states.iloc[ind-3][features].values
+        # market_state4 = self.market_states.iloc[ind-4][features].values
+        # market_state5 = self.market_states.iloc[ind-5][features].values
+        # market_state6 = self.market_states.iloc[ind-6][features].values
+        # market_state7 = self.market_states.iloc[ind-7][features].values
+        # market_state8 = self.market_states.iloc[ind-8][features].values
+        # market_state9 = self.market_states.iloc[ind-9][features].values
+        # market_state10 = self.market_states.iloc[ind-10][features].values
         internal_state = np.array([pos])
         fs = np.concatenate((
-            # market_state,
-            market_state - market_state2,
+            market_state,
+            market_state1,
+            market_state2,
+            market_state3,
+            # market_state1,
+            # market_state - market_state1,
+            # market_state - market_state6,
+            # market_state2 - market_state3,
+            # market_state3 - market_state4,
+            # market_state4 - market_state5,
+            # market_state5 - market_state6,
+            # market_state6 - market_state7,
+            # market_state7 - market_state8,
+            # market_state8 - market_state9,
+            # market_state9 - market_state10,
+            # market_state - market_state10,
             internal_state
         ), axis=0)
         return fs
@@ -49,7 +78,10 @@ class TradingGameWorld:
         self.position = position
         self.cur_index = cur_index
         self.shift = shift
-        return self.state(index=(self.shift + self.cur_index))
+        index = (self.shift + self.cur_index)
+        logger.debug("Reset environment: position(%d), cur_index(%d), shift(%d)" % (self.position, self.cur_index, self.shift))
+        logger.debug("Return state for index %d" % index)
+        return self.state(index=index)
 
     def __define_lots(self, action):
         des = action[0]
@@ -62,24 +94,33 @@ class TradingGameWorld:
         return lots
 
     def step(self, action, scale_reward=True):
+        logger.debug("Doing the next step in the environment with action %f.", action[0])
         lots_should_be = self.__define_lots(action)
         trade = lots_should_be - self.position
+        logger.debug("Execution trade of the %d lots." % trade)
         closed_positions = 0
         if self.position > 0 and trade < 0 or self.position < 0 and trade > 0:
             closed_positions = min(np.abs(self.position), np.abs(trade))
         commission = closed_positions * self.spread
-
-        self.cur_index += 1
         self.position += trade
+        logger.debug("Transaction cost of %d points was paid." % commission)
+        logger.debug("Current position is %d lots." % self.position)
 
-        points = self.market_states.iloc[self.shift + self.cur_index]["target"]
-        reward = (100000 * points) * self.position - commission
+        ind = self.shift + self.cur_index
+        points = 100000 * self.market_states.iloc[ind]["target"]
+        logger.debug("Target amount is %d points for current index %d." % (points, ind))
+        reward = points * self.position - commission
+        logger.debug("Current reward is %d points." % reward)
 
         # придаем последним вознаграждениям больший вес, чтобы агент
         # быстрее приспасабливался к изменяемым правилам игры
         if scale_reward:
             reward = reward * np.exp(-0.5 * (self.game_length - self.cur_index) / self.game_length)
 
+        self.cur_index += 1
+
         done = self.cur_index == (self.game_length - 1)
 
-        return self.state(index=(self.shift + self.cur_index)), reward, done
+        index = self.shift + self.cur_index
+        logger.debug("Action was executed at state %d. The next state for the index %d will be returned." % (ind, index))
+        return self.state(index=index), reward, done

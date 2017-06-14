@@ -8,6 +8,8 @@ from scipy.optimize import minimize
 
 from profiling import timeit
 
+import pandas as pd
+
 import os, ctypes
 from scipy import integrate, LowLevelCallable
 

@@ -8,6 +8,13 @@ import sklearn.preprocessing
 
 from tradingworld import TradingGameWorld
 
+import logging
+import logging.config
+
+logging.config.fileConfig('logging.conf')
+
+logger = logging.getLogger('default')
+
 EpisodeStats = collections.namedtuple("Stats", ["episode_lengths", "episode_rewards"])
 
 TradingResults = collections.namedtuple("TradingResults", ["strategy_points", "bnh_points", "mu", "sigma"])
@@ -128,18 +135,20 @@ def play_episodes(env, estimator_policy, estimator_value, num_episodes, discount
         episode_rewards=np.zeros(num_episodes))
 
     Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
-
+    logger.debug("Starting of playing episodes: N(%d)" % num_episodes)
     for i_episode in range(num_episodes):
         # сбрасываем состояние среды, получаем начальное состояние
         state = env.reset(shift=shift)
         episode = []
         rewards = np.zeros(3000)
+        errors = np.zeros(3000)
         # Одна прогонка обучения
         for t in itertools.count():
             # Делаем очередной шаг стратегии
             decision = estimator_policy.predict(state)
             action = decision[0]
-            next_state, reward, done = env.step(action)
+            logger.debug("Value prediction is %f for %dth step" % (action, t))
+            next_state, reward, done = env.step(action, scale_reward=False)
             # Сохраняем переход
             episode.append(Transition(
                 state=state, action=action, reward=reward, next_state=next_state, done=done))
@@ -148,9 +157,11 @@ def play_episodes(env, estimator_policy, estimator_value, num_episodes, discount
             stats.episode_lengths[i_episode] = t
             rewards[t] = reward
             # Рассчитываем целевое TD значение
-            value_next = estimator_value.predict(next_state) * np.exp(-0.5 * (env.game_length - env.cur_index) / env.game_length)
+            # value_next = estimator_value.predict(next_state) * np.exp(-0.5 * (env.game_length - env.cur_index) / env.game_length)
+            value_next = estimator_value.predict(next_state)
             td_target = reward + discount_factor * value_next
             td_error = td_target - estimator_value.predict(state)
+            errors[t] = td_error
             # Обновляем апроксиматор ценности состояния
             estimator_value.update(state, td_target)
             # Обновляем апроксиматор политики
@@ -159,12 +170,13 @@ def play_episodes(env, estimator_policy, estimator_value, num_episodes, discount
                 break
             state = next_state
 
-        print("\nEpisode {}/{} ({})".format(i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]), end="")
+        logger.info("Episode {}/{} ({})".format(i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]))
+        # logger.info("Squared error id %f", np.sum(np.power(errors, 2)))
 
     return stats
 
 
-def actor_critic(env, estimator_policy, estimator_value, discount_factor=1.0, step=10, length=2000):
+def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, step=15, length=5000):
     # заведем структурку, куда будем сохранять основные данные с прогрессом работы для последующего анализа
     results = TradingResults(
         strategy_points=np.zeros(length),
@@ -172,31 +184,34 @@ def actor_critic(env, estimator_policy, estimator_value, discount_factor=1.0, st
         mu=np.zeros(length),
         sigma=np.zeros(length)
     )
-    start_shift = 550
+    start_shift = 1000
     # вначале нет открытых позиций
     position = 0
     # сбрасываем состояние игры на начальное
     env.reset(position=position)
-    # Шаг 1) делаем первый прогон в 100 эпизодов (прогрев)
-    play_episodes(env, estimator_policy, estimator_value, 40, discount_factor, shift=start_shift)
+    # Шаг 1) делаем первый прогон в 50 эпизодов (прогрев)
+    play_episodes(env, estimator_policy, estimator_value, 25, discount_factor, shift=start_shift)
     for shift in range(step, length, step):
         # Шаг 2) сдвигаем на shift позиций
+        logger.debug("Applying shift of %d positions" % shift)
         state = env.reset(position=position, shift=shift+start_shift, cur_index=env.game_length - step)
         # Шаг 3) предсказываем step следующих значений по смещению среднего, сохраняем результат этих step предсказаний
         for s in range(0, step):
+            ind = [env.shift + env.cur_index]
+            results.bnh_points[ind] = 100000 * env.market_states.iloc[env.shift + env.cur_index - 1]["target"]
+            logger.debug("Predict action for the state %d" % ind[0])
             decision = estimator_policy.predict(state)
             mu = decision[1]
             sigma = decision[2]
-            next_state, reward, done = env.step([1 if mu > 0 else -1],scale_reward=False)
+            next_state, reward, done = env.step([decision[0]],scale_reward=False)
             state = next_state
             position = env.position
-            ind = [start_shift + shift + s]
             results.strategy_points[ind] = reward
-            results.bnh_points[ind] = 100000 * env.market_states.iloc[env.shift + env.cur_index]["target"]
             results.mu[ind] = mu
             results.sigma[ind] = sigma
+            logger.info((np.sum(results.strategy_points), decision[0], mu, sigma))
         # Шаг 4) дообучаем, делаем 10 прогонов
-        play_episodes(env, estimator_policy, estimator_value, 10, discount_factor, shift=shift+start_shift)
+        play_episodes(env, estimator_policy, estimator_value, 5, discount_factor, shift=shift+start_shift)
         # Шаг 5) повторяем с шага 3
 
     return results
@@ -223,4 +238,4 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
-        results = actor_critic(env, policy_estimator, value_estimator, discount_factor=0.95, length=2000)
+        results = actor_critic(env, policy_estimator, value_estimator, discount_factor=0.98, length=5000)

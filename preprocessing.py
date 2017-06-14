@@ -4,7 +4,9 @@ from multiprocessing.pool import Pool
 import numpy as np
 import pandas as pd
 
-from datautils import load_returns
+from itertools import product
+
+from datautils import load_returns, load_window_returns
 from distribution import FpdFromHeatDiffusion
 
 try:
@@ -63,14 +65,14 @@ def extract_model_features(m, p):
         'kurtosis_st': m.moment(4),
         # четвертый момент для текущего распределения
         'kurtosis': m.moment(4, 0),
-        # вероятность, что наблюдаемое значение больше 0.0 для текущего распределения
-        'pos_cdf': 1 - m.cdf(np.array([0.0]), t=0),
+        # вероятность, что наблюдаемое значение больше 1.0 для текущего распределения
+        'pos_cdf': 1 - m.cdf(np.array([1.0]), t=0),
         # вероятность, что наблюдаемое значение больше 0.0 для стационарного распределения
-        'pos_cdf_st': m.cdf(np.array([m.interval[1]]), left_bound=0.0)[0],
-        # условное математическое ожидание наблюдения, при наблюдаемом значении > 0.0 для текущего распределения
-        'pos_cme': m.cme(0.0, m.interval[1], t=0),
-        # условное математическое ожидание наблюдения, при наблюдаемом значении < 0.0 для текущего распределения
-        'neg_cme': m.cme(m.interval[0], 0.0),
+        'pos_cdf_st': m.cdf(np.array([m.interval[1]]), left_bound=1.0)[0],
+        # условное математическое ожидание наблюдения, при наблюдаемом значении > 1.0 для текущего распределения
+        'pos_cme': m.cme(1.0, m.interval[1], t=0),
+        # условное математическое ожидание наблюдения, при наблюдаемом значении < 1.0 для текущего распределения
+        'neg_cme': m.cme(m.interval[0], 1.0),
         # количество пунктов, реализованное в следующем периоде
         'target': p
     }
@@ -101,20 +103,20 @@ if __name__ == '__main__':
     complexity = 8
     window = 12
     start = 28045
-    N = 5000
+    N = 100
     instrument = "EURUSD"
     field = "ask_close"
 
     # print("Load data for %s" % (instrument))
     file_name = prices_data_file(instrument)
-    # w_returns = load_window_returns(file_name, field, start, N, window, continues=True)
-    # models = create_models(np.exp(w_returns), complexity, cpus)
-    # df = save_models(models, models_data_file(instrument, start, N, window))
+    w_returns = load_window_returns(file_name, field, start, N, window)
+    models = create_models(np.exp(w_returns), complexity, cpus)
+    df = save_models(models, models_data_file(instrument, start, N, window))
 
-    df = pd.DataFrame.from_csv("data/.temp/models_EUR_s28045_n5000_w12_log.csv", sep=";")
+    # df = pd.DataFrame.from_csv("data/.temp/models_EUR_s28045_n5000_w12_log.csv", sep=";")
     models = FpdFromHeatDiffusion.from_df(df)[:N]
 
-    points = load_returns(file_name, field, start + window + 1, N, rtype="points")
+    points = load_returns(file_name, field, start + window, N, rtype="points")
 
     features_df = create_features(models, points, cpus)
 
