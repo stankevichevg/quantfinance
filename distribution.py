@@ -36,7 +36,7 @@ class EvolvingProbabilityDistribution:
         self.interval = interval
         self.status = status
 
-    def pdf(self, xs, params=None, t=np.inf):
+    def pdf(self, xs, params=None, t=np.inf, time_shifts=0.0):
         """
         Для заданных точек производит рассчет значений PDF.
         
@@ -170,7 +170,8 @@ class EvolvingProbabilityDistribution:
         :param xs: наблюдаемые значения
         :return: значение функции правдоподобия с обратным знаком (удобно для нужд оптимизации)
         """
-        return -np.sum(np.log(self.pdf(xs, pars, 0)))
+        time_shifts = (-np.arange(0, xs.shape[0], 1) / (365 * 24))[::-1]
+        return -np.sum(np.log(self.pdf(xs, pars, 0, time_shifts=time_shifts)))
 
 
 class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
@@ -182,12 +183,13 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
     def __init__(self, pars, interval=(None, None), status=(-1, None)):
         EvolvingProbabilityDistribution.__init__(self, pars, interval, status)
 
-    def pdf(self, xs, pars=None, t=np.inf):
+    def pdf(self, xs, pars=None, t=np.inf, time_shifts=0.0):
         d_params = pars if pars is not None else self.params
         if np.isinf(t):
             return self.__stationary_pdf(xs, d_params)
         else:
-            return self.__stationary_pdf(xs, d_params) * self.__pdf_perturbation(xs, d_params, t)
+            return self.__stationary_pdf(xs, d_params) * \
+                   self.__pdf_perturbation(xs, d_params, t, time_shifts=time_shifts)
 
     def cdf(self, xs, pars=None, t=np.inf, left_bound=None):
         leftmost = left_bound if left_bound is not None else self.integration_interval(xs)[0]
@@ -265,7 +267,7 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
 
     def create_bounds(self, pars):
         bounds = super().create_bounds(pars)
-        bounds[0] = (0.2, 0.8)
+        bounds[0] = (0.15, 0.85)
         bounds[1] = (0.0, None)
         bounds[2] = (0.0, None)
         return bounds
@@ -279,8 +281,8 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
                 .transpose().dot(st_params)
         )
 
-    def __pdf_perturbation(self, points, pars, t):
+    def __pdf_perturbation(self, points, pars, t, time_shifts=0.0):
         A = pars[0]
         k = pars[1]
-        return 1 + A * np.exp(-np.power(k, 2) * t) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
+        return 1 + A * np.exp(-np.power(k, 2) * (t - time_shifts)) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
 
