@@ -183,13 +183,13 @@ def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, s
         mu=np.zeros(length),
         sigma=np.zeros(length)
     )
-    start_shift = 1000
+    start_shift = 100
     # вначале нет открытых позиций
     position = 0
     # сбрасываем состояние игры на начальное
     env.reset(position=position)
     # Шаг 1) делаем первый прогон в 50 эпизодов (прогрев)
-    play_episodes(env, estimator_policy, estimator_value, 25, discount_factor, shift=start_shift)
+    play_episodes(env, estimator_policy, estimator_value, 30, discount_factor, shift=start_shift)
     for shift in range(step, length, step):
         # Шаг 2) сдвигаем на shift позиций
         logger.debug("Applying shift of %d positions" % shift)
@@ -210,7 +210,7 @@ def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, s
             results.sigma[ind] = sigma
             logger.info((np.sum(results.strategy_points), decision[0], mu, sigma))
         # Шаг 4) дообучаем, делаем 10 прогонов
-        play_episodes(env, estimator_policy, estimator_value, 5, discount_factor, shift=shift+start_shift)
+        play_episodes(env, estimator_policy, estimator_value, 30, discount_factor, shift=shift+start_shift)
         # Шаг 5) повторяем с шага 3
 
     return results
@@ -218,8 +218,8 @@ def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, s
 
 if __name__ == '__main__':
 
-    market_states = pd.DataFrame.from_csv("data/.temp/models_features_EURUSD_s28045_n5000_w12_log.csv")
-    env = TradingGameWorld(market_states, game_length=1000)
+    market_states = pd.DataFrame.from_csv("data/.temp/models_features_EURUSD_s28045_n800_w12_log.csv")
+    env = TradingGameWorld(market_states, game_length=250)
 
     # Готовим скейлер данных для обучения
     observation_examples = np.array([env.sample() for x in range(10000)])
@@ -237,4 +237,4 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
-        results = actor_critic(env, policy_estimator, value_estimator, discount_factor=0.98, length=5000)
+        results = actor_critic(env, policy_estimator, value_estimator, discount_factor=0.98, length=800)

@@ -21,47 +21,43 @@ except NotImplementedError:
     cpus = 2   # где не смогли определеить, выставляем по умолчанию
 
 
-def fit_hd_model(observations, complexity=8, init_k=1.0 / 3, init_a=1 * np.pi):
+def fit_hd_model(observations, complexity=8):
+    # 1. создаем сетку параметров
+    # 0.1 <= k <= 0.95
+    k_values = np.arange(0.1, 0.95, 0.2)
+    # 2 * pi <= A <= 8 * pi
+    a_values = np.pi * np.arange(2, 8, 1)
+    # 2. каждую модель оптимизируем в каждом узле сетки
+    pairs = list(product(k_values, a_values))
+    # 3. выбираем лучшее решение из всех (максимальное значение правдоподобия)
+    best_model = None
+    best_pair = None
+    best_score = np.inf
     mparams = np.zeros(complexity)
-    mparams[0] = init_k
-    mparams[1] = init_a
-    mparams[2] = 1
-    fpd = FpdFromHeatDiffusion(mparams)
-    fpd_model = fpd.fit(observations)
-    return fpd_model
+    for pair in pairs:
+        mparams[0] = pair[0]
+        mparams[1] = pair[1]
+        mparams[2] = 1
+        fpd = FpdFromHeatDiffusion(mparams)
+        fpd_model = fpd.fit(observations)
+        if fpd_model.status[1] < best_score:
+            best_model = fpd_model
+            best_pair = pair
+            best_score = fpd_model.status[1]
+    logger.debug("The best model have been found for init params: (%f, %f)", best_pair[0], best_pair[1])
+    logger.debug("Model fitting status: %s", best_model.status)
+    logger.debug("Found params: %s", best_model.params)
 
+    return best_model
 
 def create_models(train, complexity, n_threads=1):
     ms = []
     with Pool(processes=n_threads) as pool:
-        # 1. создаем сетку параметров
-        # 0.1 <= k <= 0.95
-        k_values = np.arange(0.1, 0.95, 0.25)
-        # 0.5 * pi <= A <= 5 * pi
-        a_values = np.pi * np.arange(2, 7, 1)
-        # 2. каждую модель оптимизируем в каждом узле сетки
-        pairs = list(product(k_values, a_values))
-        for i in range(train.shape[0]):
-            logger.debug("Fitting model #%d", i)
-            results = [(pair, pool.apply_async(fit_hd_model, (train[i, :], complexity, pair[0], pair[1]))) for pair in pairs]
-            # 3. выбираем лучшее решение из всех (минимальное значение )
-            best_model = None
-            best_pair = None
-            best_score = np.inf
-            for res in results:
-                model = res[1].get()
-                if model.status[1] < best_score:
-                    best_model = model
-                    best_pair = res[0]
-                    best_score = model.status[1]
-
-            logger.debug("The best model have been found for init params: (%f, %f)", best_pair[0], best_pair[1])
-            logger.debug("Model fitting status: %s", best_model.status)
-            logger.debug("Found params: %s", best_model.params)
-            ms.append(best_model)
-            logger.debug("Model %d is ready", i)
+        results = [pool.apply_async(fit_hd_model, (train[i, :], complexity)) for i in range(train.shape[0])]
+        for i, res in enumerate(results):
+            ms.append(res.get())
+            print("Model %d is ready" % i)
     return ms
-
 
 def save_models(ms, file=None):
     df = None
@@ -131,7 +127,7 @@ if __name__ == '__main__':
     complexity = 8
     window = 12
     start = 28045
-    N = 60
+    N = 800
     instrument = "EURUSD"
     field = "ask_close"
 

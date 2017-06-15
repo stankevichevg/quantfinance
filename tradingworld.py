@@ -41,35 +41,18 @@ class TradingGameWorld:
     def state(self, index=None, position=None):
         ind = index if index is not None else self.cur_index
         pos = position if position is not None else self.position
-        market_state = self.market_states.iloc[ind][features].values
-        market_state1 = self.market_states.iloc[ind-1][features].values
-        market_state2 = self.market_states.iloc[ind-2][features].values
-        market_state3 = self.market_states.iloc[ind-3][features].values
-        # market_state4 = self.market_states.iloc[ind-4][features].values
-        # market_state5 = self.market_states.iloc[ind-5][features].values
-        # market_state6 = self.market_states.iloc[ind-6][features].values
-        # market_state7 = self.market_states.iloc[ind-7][features].values
-        # market_state8 = self.market_states.iloc[ind-8][features].values
-        # market_state9 = self.market_states.iloc[ind-9][features].values
-        # market_state10 = self.market_states.iloc[ind-10][features].values
+        market_state = self.market_states.iloc[ind]['mean_st'] - self.market_states.iloc[ind]['mean']
+        market_state2 = self.market_states.iloc[ind]['dispersion_st'] - self.market_states.iloc[ind]['dispersion']
+        market_state3 = self.market_states.iloc[ind]['kurtosis_st'] - self.market_states.iloc[ind]['kurtosis']
+        market_state4 = self.market_states.iloc[ind]['skewness_st'] - self.market_states.iloc[ind]['skewness']
+        market_state5 = self.market_states.iloc[ind]['pos_cdf_st'] - self.market_states.iloc[ind]['pos_cdf']
         internal_state = np.array([pos])
         fs = np.concatenate((
-            market_state,
-            market_state1,
-            market_state2,
-            market_state3,
-            # market_state1,
-            # market_state - market_state1,
-            # market_state - market_state6,
-            # market_state2 - market_state3,
-            # market_state3 - market_state4,
-            # market_state4 - market_state5,
-            # market_state5 - market_state6,
-            # market_state6 - market_state7,
-            # market_state7 - market_state8,
-            # market_state8 - market_state9,
-            # market_state9 - market_state10,
-            # market_state - market_state10,
+            np.array([market_state,
+            # market_state2,
+            # market_state3,
+            # market_state4,
+            market_state5]),
             internal_state
         ), axis=0)
         return fs
