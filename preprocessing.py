@@ -36,7 +36,7 @@ def create_models(train, complexity, n_threads=1):
     with Pool(processes=n_threads) as pool:
         # 1. создаем сетку параметров
         # 0.1 <= k <= 0.95
-        k_values = np.arange(0.1, 0.95, 0.2)
+        k_values = np.arange(0.1, 0.95, 0.25)
         # 0.5 * pi <= A <= 5 * pi
         a_values = np.pi * np.arange(2, 7, 1)
         # 2. каждую модель оптимизируем в каждом узле сетки
@@ -131,13 +131,13 @@ if __name__ == '__main__':
     complexity = 8
     window = 12
     start = 28045
-    N = 100
+    N = 60
     instrument = "EURUSD"
     field = "ask_close"
 
     # print("Load data for %s" % (instrument))
     file_name = prices_data_file(instrument)
-    w_returns = load_window_returns(file_name, field, start, N, window)
+    w_returns = load_window_returns(file_name, field, start, N, window, continues=False)
     models = create_models(np.exp(w_returns), complexity, cpus)
     df = save_models(models, models_data_file(instrument, start, N, window))
 
