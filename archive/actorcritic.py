@@ -32,17 +32,17 @@ def main():
     N = 5000
     points = load_returns("data/IB-EURUSD-8-XI-2016-2.csv", "ask_close", start + shift + 1, N, rtype="points") * 1e5
 
-    df = pd.DataFrame.from_csv("data/.temp/models_EUR_s28045_n5000_w12_log.csv", sep=";")
+    df = pd.DataFrame.from_csv("../data/.temp/models_EUR_s28045_n800_w12_log_old.csv", sep=";")
     models = FpdFromHeatDiffusion.from_df(df)[:N]
 
-    points = points[4012:]
-    models = models[4012:]
+    points = points[3000:]
+    models = models[3000:]
 
     window_size = 1000
     moving_window = (0, window_size)
     step = 1
 
-    model_features = TradingWorld.generate_features(models)
+    model_features = pd.DataFrame.from_csv("data/.temp/models_features_EURUSD_s28045_n800_w12_log.csv")[:5000]
     env = TradingWorld(points, model_features, moving_window)
 
     state_action_matrix = np.random.random((3, env.size))

@@ -189,7 +189,7 @@ def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, s
     # сбрасываем состояние игры на начальное
     env.reset(position=position)
     # Шаг 1) делаем первый прогон в 50 эпизодов (прогрев)
-    play_episodes(env, estimator_policy, estimator_value, 30, discount_factor, shift=start_shift)
+    play_episodes(env, estimator_policy, estimator_value, 100, discount_factor, shift=start_shift)
     for shift in range(step, length, step):
         # Шаг 2) сдвигаем на shift позиций
         logger.debug("Applying shift of %d positions" % shift)
@@ -219,7 +219,7 @@ def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, s
 if __name__ == '__main__':
 
     market_states = pd.DataFrame.from_csv("data/.temp/models_features_EURUSD_s28045_n800_w12_log.csv")
-    env = TradingGameWorld(market_states, game_length=250)
+    env = TradingGameWorld(market_states, game_length=400)
 
     # Готовим скейлер данных для обучения
     observation_examples = np.array([env.sample() for x in range(10000)])
