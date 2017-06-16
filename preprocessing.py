@@ -24,9 +24,9 @@ except NotImplementedError:
 def fit_hd_model(observations, complexity=8):
     # 1. создаем сетку параметров
     # 0.1 <= k <= 0.95
-    k_values = np.arange(0.1, 0.95, 0.2)
+    k_values = np.arange(0.1, 0.95, 0.4)
     # 2 * pi <= A <= 8 * pi
-    a_values = np.pi * np.arange(2, 8, 1)
+    a_values = np.pi * np.arange(2, 4, 1)
     # 2. каждую модель оптимизируем в каждом узле сетки
     pairs = list(product(k_values, a_values))
     # 3. выбираем лучшее решение из всех (максимальное значение правдоподобия)
@@ -77,6 +77,14 @@ def extract_model_features(m, p):
         'mean_st': m.moment(1),
         # первый момент для текущего распределения
         'mean': m.moment(1, 0),
+        # первый момент для распределения через час
+        'mean_1h': m.moment(1, 1.0/(365 * 24)),
+        # первый момент для распределения через два часа
+        'mean_2h': m.moment(1, 2.0/(365 * 24)),
+        # первый момент для распределения через два часа
+        'mean_3h': m.moment(1, 3.0/(365 * 24)),
+        # первый момент для распределения через два часа
+        'mean_4h': m.moment(1, 4.0/(365 * 24)),
         # второй момент для стационарного распределения
         'dispersion_st': m.moment(2),
         # второй момент для текущего распределения
@@ -124,10 +132,10 @@ def models_features_data_file(instrument, start, N, window):
     return "data/.temp/models_features_%s_s%s_n%s_w%s_log.csv" % (instrument, start, N, window)
 
 if __name__ == '__main__':
-    complexity = 8
+    complexity = 6
     window = 12
-    start = 28045
-    N = 800
+    start = 29245
+    N = 100
     instrument = "EURUSD"
     field = "ask_close"
 

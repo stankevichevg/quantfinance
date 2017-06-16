@@ -171,6 +171,7 @@ class EvolvingProbabilityDistribution:
         :return: значение функции правдоподобия с обратным знаком (удобно для нужд оптимизации)
         """
         time_shifts = (-np.arange(0, xs.shape[0], 1) / (365 * 24))[::-1]
+        # time_shifts = 0.0
         return -np.sum(np.log(self.pdf(xs, pars, 0, time_shifts=time_shifts)))
 
 
@@ -284,5 +285,5 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
     def __pdf_perturbation(self, points, pars, t, time_shifts=0.0):
         A = pars[0]
         k = pars[1]
-        return 1 + A * np.exp(-np.power(k, 2) * (t - time_shifts)) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
+        return 1 + A * np.exp(-np.power(k, 2) * (t + time_shifts)) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
 
