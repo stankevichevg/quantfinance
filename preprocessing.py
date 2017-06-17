@@ -24,9 +24,9 @@ except NotImplementedError:
 def fit_hd_model(observations, complexity=8):
     # 1. создаем сетку параметров
     # 0.1 <= k <= 0.95
-    k_values = np.arange(0.1, 0.95, 0.4)
+    k_values = np.arange(0.1, 0.95, 0.2)
     # 2 * pi <= A <= 8 * pi
-    a_values = np.pi * np.arange(2, 4, 1)
+    a_values = np.pi * np.arange(2, 5, 0.6)
     # 2. каждую модель оптимизируем в каждом узле сетки
     pairs = list(product(k_values, a_values))
     # 3. выбираем лучшее решение из всех (максимальное значение правдоподобия)
@@ -132,10 +132,10 @@ def models_features_data_file(instrument, start, N, window):
     return "data/.temp/models_features_%s_s%s_n%s_w%s_log.csv" % (instrument, start, N, window)
 
 if __name__ == '__main__':
-    complexity = 6
+    complexity = 7
     window = 12
-    start = 29245
-    N = 100
+    start = 40000
+    N = 50
     instrument = "EURUSD"
     field = "ask_close"
 
