@@ -1,7 +1,4 @@
 # coding=utf-8
-import multiprocessing
-from multiprocessing import Pool
-
 import numpy as np
 
 from scipy.optimize import minimize
@@ -34,6 +31,7 @@ class EvolvingProbabilityDistribution:
     def __init__(self, params, interval, status):
         self.params = params
         self.interval = interval
+        self.status = status
         self.status = status
 
     def pdf(self, xs, params=None, t=np.inf, time_shifts=0.0):
@@ -92,7 +90,7 @@ class EvolvingProbabilityDistribution:
         result = minimize(
             self.__inv_log_likelihood, self.params, args=(X,),
             constraints=tuple(self.create_constraints(X)), options={'disp': False, 'maxiter': 1000},
-            bounds=self.create_bounds(self.params), tol=5e-06
+            bounds=self.create_bounds(self.params), tol=1e-06
         )
 
         self.params = result.x
@@ -232,6 +230,7 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
             models.append(FpdFromHeatDiffusion(model_params, interval, status))
         return models[0] if len(models) == 1 else models
 
+    @timeit
     def __optimized_stationary_cdf(self, xs, pars, leftmost=None):
         """
         Оптимизированный метод для рассчета CDF для стационарного распределения, используется 
@@ -276,14 +275,15 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
     def __stationary_pdf(self, points, pars):
         K = pars[2]
         st_params = pars[3:]
-        powers = np.arange(st_params.shape[0]) + 1
-        return K * np.exp(
-            np.power(np.tile(points, (powers.shape[0], 1)), np.tile(powers, (points.shape[0], 1)).transpose())
-                .transpose().dot(st_params)
-        )
+        values = np.zeros(points.shape[0])
+        for i in range(0, st_params.shape[0]):
+            values += st_params[i] * np.power(points, i + 1)
+        values = K * np.exp(values)
+        return values
 
     def __pdf_perturbation(self, points, pars, t, time_shifts=0.0):
         A = pars[0]
         k = pars[1]
-        return 1 + A * np.exp(-np.power(k, 2) * (t + time_shifts)) * np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
+        return 1 + A * np.exp(-np.power(k, 2) * (t + time_shifts)) * \
+                   np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
 

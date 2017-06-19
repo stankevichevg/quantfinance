@@ -24,9 +24,9 @@ except NotImplementedError:
 def fit_hd_model(observations, complexity=8):
     # 1. создаем сетку параметров
     # 0.1 <= k <= 0.95
-    k_values = np.arange(0.1, 0.95, 0.2)
+    k_values = np.arange(0.3, 0.4, 0.1)
     # 2 * pi <= A <= 8 * pi
-    a_values = np.pi * np.arange(2, 5, 0.6)
+    a_values = np.pi * np.arange(3, 4, 1)
     # 2. каждую модель оптимизируем в каждом узле сетки
     pairs = list(product(k_values, a_values))
     # 3. выбираем лучшее решение из всех (максимальное значение правдоподобия)
@@ -134,15 +134,15 @@ def models_features_data_file(instrument, start, N, window):
 if __name__ == '__main__':
     complexity = 7
     window = 12
-    start = 40000
-    N = 50
+    start = 41970
+    N = 300
     instrument = "EURUSD"
-    field = "ask_close"
+    field = "bid_close"
 
     # print("Load data for %s" % (instrument))
     file_name = prices_data_file(instrument)
-    w_returns = load_window_returns(file_name, field, start, N, window, continues=False)
-    models = create_models(np.exp(w_returns), complexity, cpus)
+    w_returns = load_window_returns(file_name, field, start, N, window, continues=True)
+    models = create_models(np.exp(w_returns), complexity, 2)
     df = save_models(models, models_data_file(instrument, start, N, window))
 
     # df = pd.DataFrame.from_csv("data/.temp/models_EUR_s28045_n5000_w12_log.csv", sep=";")
