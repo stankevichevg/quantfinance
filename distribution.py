@@ -89,7 +89,7 @@ class EvolvingProbabilityDistribution:
 
         result = minimize(
             self.__inv_log_likelihood, self.params, args=(X,),
-            constraints=tuple(self.create_constraints(X)), options={'disp': False, 'maxiter': 1000},
+            constraints=tuple(self.create_constraints(X)), options={'disp': False, 'maxiter': 500},
             bounds=self.create_bounds(self.params), tol=1e-06
         )
 
@@ -116,7 +116,7 @@ class EvolvingProbabilityDistribution:
             {
                 # прижимаем концы стационарного распределения
                 'type': 'ineq',
-                'fun': lambda pars: 0.01 - self.pdf(np.array([a, b]), pars)
+                'fun': lambda pars: 0.02 - self.pdf(np.array([a, b]), pars)
             }
         ]
         return constraints
@@ -267,7 +267,7 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
 
     def create_bounds(self, pars):
         bounds = super().create_bounds(pars)
-        bounds[0] = (0.15, 0.85)
+        bounds[0] = (0.5, 0.8)
         bounds[1] = (0.0, None)
         bounds[2] = (0.0, None)
         return bounds

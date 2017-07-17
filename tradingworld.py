@@ -52,7 +52,8 @@ class TradingGameWorld:
             # market_state2,
             # market_state3,
             # market_state4,
-            market_state5]),
+            market_state5
+                      ]),
             internal_state
         ), axis=0)
         return fs
@@ -67,7 +68,7 @@ class TradingGameWorld:
         return self.state(index=index)
 
     def __define_lots(self, action):
-        des = action[0]
+        des = action
         lots = 0
         boundary = 0.0
         if des > boundary:
@@ -77,7 +78,7 @@ class TradingGameWorld:
         return lots
 
     def step(self, action, scale_reward=True):
-        logger.debug("Doing the next step in the environment with action %f.", action[0])
+        logger.debug("Doing the next step in the environment with action %f.", action)
         lots_should_be = self.__define_lots(action)
         trade = lots_should_be - self.position
         logger.debug("Execution trade of the %d lots." % trade)

@@ -23,12 +23,12 @@ except NotImplementedError:
 
 def fit_hd_model(observations, complexity=8):
     # 1. создаем сетку параметров
-    # 0.1 <= k <= 0.95
-    k_values = np.arange(0.3, 0.4, 0.1)
-    # 2 * pi <= A <= 8 * pi
-    a_values = np.pi * np.arange(3, 4, 1)
+    # 0.1 <= A <= 0.95
+    a_values = np.arange(0.2, 0.8, 0.1)
+    # 2 * pi <= k <= 8 * pi
+    k_values = np.pi * np.arange(2, 5, 0.5)
     # 2. каждую модель оптимизируем в каждом узле сетки
-    pairs = list(product(k_values, a_values))
+    pairs = list(product(a_values, k_values))
     # 3. выбираем лучшее решение из всех (максимальное значение правдоподобия)
     best_model = None
     best_pair = None
@@ -40,10 +40,12 @@ def fit_hd_model(observations, complexity=8):
         mparams[2] = 1
         fpd = FpdFromHeatDiffusion(mparams)
         fpd_model = fpd.fit(observations)
-        if fpd_model.status[1] < best_score:
+        print(fpd_model.status)
+        if fpd_model.status[1] < best_score or best_model == None:
             best_model = fpd_model
             best_pair = pair
             best_score = fpd_model.status[1]
+    logger.debug("Observations: %s", observations)
     logger.debug("The best model have been found for init params: (%f, %f)", best_pair[0], best_pair[1])
     logger.debug("Model fitting status: %s", best_model.status)
     logger.debug("Found params: %s", best_model.params)
@@ -134,12 +136,11 @@ def models_features_data_file(instrument, start, N, window):
 if __name__ == '__main__':
     complexity = 7
     window = 12
-    start = 41970
-    N = 300
+    start = 38570
+    N = 100
     instrument = "EURUSD"
     field = "bid_close"
 
-    # print("Load data for %s" % (instrument))
     file_name = prices_data_file(instrument)
     w_returns = load_window_returns(file_name, field, start, N, window, continues=True)
     models = create_models(np.exp(w_returns), complexity, 2)

@@ -30,26 +30,16 @@ class PolicyEstimator():
             self.action = tf.placeholder(tf.float32, name="action")
             self.target = tf.placeholder(tf.float32, name="target")
             # Простая линейная классификация
-            self.mu = tf.contrib.layers.fully_connected(
+            self.action = tf.contrib.layers.fully_connected(
                 inputs=tf.expand_dims(self.state, 0),
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.zeros_initializer())
-            self.mu = tf.squeeze(self.mu)
-            self.sigma = tf.contrib.layers.fully_connected(
-                inputs=tf.expand_dims(self.state, 0),
-                num_outputs=1,
-                activation_fn=None,
-                weights_initializer=tf.zeros_initializer())
-            self.sigma = tf.squeeze(self.sigma)
-            self.sigma = tf.nn.softplus(self.sigma) + 1e-5
-            self.normal_dist = tf.contrib.distributions.Normal(self.mu, self.sigma)
-            self.action = self.normal_dist.sample(1)
+                weights_initializer=tf.ones_initializer())
+            self.action = tf.squeeze(self.action)
             self.action = tf.clip_by_value(self.action, env.action_space.low[0], env.action_space.high[0])
             # Loss and train op
-            self.loss = -self.normal_dist.log_pdf(self.action) * self.target
-            # Add cross entropy cost to encourage exploration
-            self.loss -= 1e-1 * self.normal_dist.entropy()
+
+            self.loss = tf.squared_difference(self.action, self.target)
             self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
             self.train_op = self.optimizer.minimize(
                 self.loss, global_step=tf.contrib.framework.get_global_step())
@@ -57,7 +47,7 @@ class PolicyEstimator():
     def predict(self, state, sess=None, scale=True):
         sess = sess or tf.get_default_session()
         state = self.scaler.transform([state])[0]
-        return sess.run([self.action, self.mu, self.sigma], {self.state: state})
+        return sess.run([self.action], {self.state: state})
 
     def update(self, state, target, action, sess=None):
         sess = sess or tf.get_default_session()
@@ -144,8 +134,7 @@ def play_episodes(env, estimator_policy, estimator_value, num_episodes, discount
         # Одна прогонка обучения
         for t in itertools.count():
             # Делаем очередной шаг стратегии
-            decision = estimator_policy.predict(state)
-            action = decision[0]
+            action = estimator_policy.predict(state)[0]
             logger.debug("Value prediction is %f for %dth step" % (action, t))
             next_state, reward, done = env.step(action, scale_reward=False)
             # Сохраняем переход
@@ -199,16 +188,12 @@ def actor_critic(env, estimator_policy, estimator_value,  discount_factor=1.0, s
             ind = [env.shift + env.cur_index]
             results.bnh_points[ind] = 100000 * env.market_states.iloc[env.shift + env.cur_index - 1]["target"]
             logger.debug("Predict action for the state %d" % ind[0])
-            decision = estimator_policy.predict(state)
-            mu = decision[1]
-            sigma = decision[2]
-            next_state, reward, done = env.step([decision[0]],scale_reward=False)
+            action = estimator_policy.predict(state)
+            next_state, reward, done = env.step([action],scale_reward=False)
             state = next_state
             position = env.position
             results.strategy_points[ind] = reward
-            results.mu[ind] = mu
-            results.sigma[ind] = sigma
-            logger.info((np.sum(results.strategy_points), decision[0], mu, sigma))
+            logger.info((np.sum(results.strategy_points), action))
         # Шаг 4) дообучаем, делаем 10 прогонов
         play_episodes(env, estimator_policy, estimator_value, 30, discount_factor, shift=shift+start_shift)
         # Шаг 5) повторяем с шага 3
