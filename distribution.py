@@ -287,3 +287,108 @@ class FpdFromHeatDiffusion(EvolvingProbabilityDistribution):
         return 1 + A * np.exp(-np.power(k, 2) * (t + time_shifts)) * \
                    np.sin(k * (0.5 - self.__optimized_stationary_cdf(points, pars, leftmost=0)))
 
+
+class MaximumEntropyPDF(EvolvingProbabilityDistribution):
+    """
+    Модель распределения, соответствующее принципу минимума энтропии. Не изменяется во времени.
+    """
+
+    def plot(self):
+        import seaborn
+        seaborn.mpl.rcParams['figure.figsize'] = (7.0, 4.0)
+        seaborn.mpl.rcParams['savefig.dpi'] = 100
+
+        import pandas as pd
+
+        x = np.linspace(0.3, 1.7, 250)
+        y = self.pdf(x)
+
+        return pd.Series(y, x).plot(label='Estimated density function 1', legend=True)
+
+    def __init__(self, pars, interval=(None, None), status=(-1, None)):
+        EvolvingProbabilityDistribution.__init__(self, pars, interval, status)
+
+    def pdf(self, xs, pars=None, t=np.inf, time_shifts=0.0):
+        d_params = pars if pars is not None else self.params
+        return self.__stationary_pdf(xs, d_params)
+
+    def cdf(self, xs, pars=None, t=np.inf, left_bound=None):
+        leftmost = left_bound if left_bound is not None else self.integration_interval(xs)[0]
+        return self.__optimized_stationary_cdf(xs, pars if pars is not None else self.params, leftmost)
+
+    def to_df(self):
+        values, names = [], []
+        names.append('status')
+        values.append(self.status[0])
+        names.append('logl')
+        values.append(self.status[1])
+        names.append('left_bound')
+        values.append(self.interval[0])
+        names.append('right_bound')
+        values.append(self.interval[1])
+        names.append('K')
+        values.append(self.params[0])
+        for i, par in enumerate(self.params[1:].tolist()):
+            names.append('lambda' + repr(i))
+            values.append(par)
+        return pd.DataFrame([values], columns=names)
+
+    @staticmethod
+    def from_df(df):
+        models = []
+        for _, row in df.iterrows():
+            all_params = row.values
+            model_params = all_params[4:]
+            interval = (all_params[2], all_params[3])
+            status = (all_params[0], all_params[1])
+            models.append(MaximumEntropyPDF(model_params, interval, status))
+        return models[0] if len(models) == 1 else models
+
+    @timeit
+    def __optimized_stationary_cdf(self, xs, pars, leftmost=None):
+        """
+        Оптимизированный метод для рассчета CDF для стационарного распределения, используется 
+        низкоуровневая реализация функции для рассчета значения стационарного распределения (ускорение ~15x !!!).
+        Для массива заданных точек CDF считается как сумма интегралов на отрезках между ними, так получается небольшое
+        ускорение в рассчете 
+
+        :param xs: точки, для которых необходимо посчитать значение CDF
+        :param pars: параметры распределения
+        :param leftmost: левая граница интегрирования
+        :return: 
+        """
+        prev_cdf = 0
+        result = np.zeros(xs.shape[0])
+        indexes = np.argsort(xs)
+        left_bound = leftmost if leftmost is not None else self.interval[0]
+
+        dp = DistributionParams()
+        dp.n = pars.shape[0]
+        dp.params = pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        user_data = ctypes.cast(ctypes.pointer(dp), ctypes.c_void_p)
+
+        pdf_f = LowLevelCallable(stdisplib.f, user_data)
+
+        for i in range(indexes.shape[0]):
+            prev_cdf += integrate.quad(pdf_f, left_bound, xs[indexes[i]])[0]
+            result[indexes[i]] = prev_cdf
+            left_bound = xs[indexes[i]]
+
+        return result
+
+    def integration_interval(self, X):
+        return 0.5, 1.7
+
+    def create_bounds(self, pars):
+        bounds = super().create_bounds(pars)
+        bounds[0] = (0.0, None)
+        return bounds
+
+    def __stationary_pdf(self, points, pars):
+        K = pars[0]
+        st_params = pars[1:]
+        values = np.zeros(points.shape[0])
+        for i in range(0, st_params.shape[0]):
+            values += st_params[i] * np.power(points, i + 1)
+        values = K * np.exp(values)
+        return values
