@@ -2,8 +2,6 @@
 import numpy as np
 import pandas as pd
 
-from profiling import timeit
-
 
 def slice_array(a, window, stepsize=1):
     """
@@ -22,7 +20,6 @@ def load_prices(file, field, start, end):
     return np.array(pd.read_csv(file)[field])[start:end]
 
 
-@timeit
 def load_window_returns(file, field, start, n, w_size, rtype="log", continues=True):
     all_prices = np.array(pd.read_csv(file)[field])[start - 1:start + n + w_size + 1]
     price_windows = slice_array(all_prices[1:], w_size)
@@ -36,7 +33,6 @@ def load_window_returns(file, field, start, n, w_size, rtype="log", continues=Tr
         return price_windows - prev_prices
 
 
-@timeit
 def load_returns(file, field, start, n, rtype="log"):
     all_prices = np.array(pd.read_csv(file)[field])[start - 1:start + n]
     cur_prices = all_prices[1:]
